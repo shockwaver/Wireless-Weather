@@ -25,16 +25,6 @@
  * bit there may mean something else? Still investigating.
  */
 
-/**
- * TODO:
- * 1.   Add: WSR_RESET() call from a dead-time timeout. If no RF
- * activity is received within a few mS, reset the receiver state
- * machine. Currently unsquelched RF noise is resetting it anyway
- * given the receiver model used, but a quiet receiver timeout should be
- * there also. Make sure boundary condition of reset just as new bit /
- * period coming in is not a problem causing loss of packet start if
- * reset happens during first transition/bit in.
- */
  
  /*
   Wireless node master
@@ -45,6 +35,12 @@
   instead of approx 750ms
   
   Address is "0node"
+  
+  4 Status LEDs to indicate node data received in last timeout minutes
+  Node 1 = Pin 10
+  Node 2 = Pin 9
+  Node 3 = Pin 5
+  LaCrosse = Pin 4
   
 */
 
@@ -87,7 +83,21 @@ volatile long node1_time = 0;
 volatile long node2_time = 0;
 volatile long node3_time = 0;
 
+// LED indicator pins
+byte node1_LED = 10;
+byte node2_LED = 9;
+byte node3_LED = 5;
+byte lacrosse_LED = 4;
+
+volatile int node1_age = 700;
+volatile int node2_age = 700;
+volatile int node3_age = 700;
+volatile int lacrosse_age = 700;
+
+int node_age_limit = 600; // ten minutes
+
 //#define SLAVE_ADDRESS 0x04
+
 
 
 //----------
@@ -132,6 +142,9 @@ const char strWindDirection[16][4] =
 // Uncomment for a debug build
 #define DEBUG
 
+String inputString = "";         // a string to hold incoming data
+boolean stringComplete = false;  // whether the string is complete
+
 /**
  * Initial configuration
  */
@@ -145,6 +158,24 @@ void setup(void)
   Serial.println("** DEBUG MODE ACTIVE **");
   Serial.println("***********************");
   #endif
+  
+  // LED indicator pins
+  pinMode(node1_LED, OUTPUT);
+  pinMode(node2_LED, OUTPUT);
+  pinMode(node3_LED, OUTPUT);
+  pinMode(lacrosse_LED, OUTPUT);
+  digitalWrite(node1_LED, HIGH);
+  digitalWrite(node2_LED, HIGH);
+  digitalWrite(node3_LED, HIGH);
+  digitalWrite(lacrosse_LED, HIGH);
+  delay(1000);
+  digitalWrite(node1_LED, LOW);
+  digitalWrite(node2_LED, LOW);
+  digitalWrite(node3_LED, LOW);
+  digitalWrite(lacrosse_LED, LOW);
+  ///////////////////////////////////
+  
+  inputString.reserve(200);
   
   printf_begin();
   Init_radio();
@@ -186,62 +217,170 @@ void Init_radio()
   // Will be pulled LOW when receiving
   attachInterrupt(0, check_radio, LOW);
 }
-/*
-int count = 0;
-void receiveData(int byteCount)
-{
-  String input;
-  byte test[] = {node1.temp,node1.Vbat,node1.uptime,4};
-  Serial.print("Received: ");Serial.print(byteCount);Serial.println(" bytes");
-  while (Wire.available()) {
-    input += Wire.read();
-  }
-  if (input == "1") {
-    Serial.println("I2C - Reseting counter");
-    count = 0; // reset counter
-  }
-  Serial.print("Input: ");Serial.println(input);
-  Wire.write(test, 4);
-}
 
-void sendData() {
-  byte payload[] = {node1.address, node1.temp, node1.Vbat, node2.address,node2.temp,node2.Vbat, node3.address,node3.temp,node3.Vbat};
-  String node1Data = String(node1.address)+","+String(node1.temp)+","+String(node1.Vbat)+"x";
-  Serial.print("Sending data over i2c: ");Serial.println(sizeof(node1Data));
-  Serial.println(node1Data[count]);
-  Wire.write(node1Data[count]);
-  if (count > sizeof(node1Data)) {
-    count = 0;
-  }
-  count++;
-  // send requested byte
-  /*Wire.write(payload[count]);
-  count++;
-  if (count > 9) {
-    count = 0;
-  }
-}
-*/
 /**
  * Main program loop
  */
 long oldTime = 0;
 int elapsedSeconds = 0;
 int intervalSeconds = 60;
+int counter = 0;
 void loop(void)
 {
   long curTime = millis()/1000;
   elapsedSeconds = curTime - oldTime;
   
   Packet_Converter_WS2355();
+  
+  /*
+  #ifdef DEBUG
   if (elapsedSeconds >= intervalSeconds) {
     oldTime = curTime;
-    Serial.print("Current information ");Serial.println(curTime);
+    curInfo(curTime);
+  }
+  #endif
+  */
+  
+  // Serial input received
+  // process and output information
+  if (stringComplete) {
+    //Serial.println(inputString);
+    if (inputString.equals("current")) {
+      curInfo(curTime);
+    } else if (inputString.equals("node1")) {
+      serialNode(node1);
+    } else if (inputString.equals("node2")) {
+      serialNode(node2);
+    } else if (inputString.equals("node3")) {
+      serialNode(node3);
+    } else if (inputString.equals("lacrosse")) {
+      serialLacrosse(lacrosse);
+    }
+    // clear the string:
+    inputString = "";
+    stringComplete = false;
+  }
+  
+  // status indicator pins
+  // count every second
+  if (elapsedSeconds >= 1) {
+    oldTime = curTime;
+    node1_age++;
+    node2_age++;
+    node3_age++;
+    lacrosse_age++;
+    
+    // reset ages if over 10000 - prevents them from overflowing
+    if (node1_age > 10000) node1_age = 700;
+    if (node2_age > 10000) node2_age = 700;
+    if (node3_age > 10000) node3_age = 700;
+    if (lacrosse_age > 10000) lacrosse_age = 700;
+    
+  }
+  
+  if (node1_age <= node_age_limit) {
+    digitalWrite(node1_LED, HIGH);
+  } else {
+    digitalWrite(node1_LED, LOW);
+  }
+  
+  if (node2_age <= node_age_limit) {
+    digitalWrite(node2_LED, HIGH);
+  } else {
+    digitalWrite(node2_LED, LOW);
+  }
+  
+  if (node3_age <= node_age_limit) {
+    digitalWrite(node3_LED, HIGH);
+  } else {
+    digitalWrite(node3_LED, LOW);
+  }
+  
+  if (lacrosse_age <= node_age_limit) {
+    digitalWrite(lacrosse_LED, HIGH);
+  } else {
+    digitalWrite(lacrosse_LED, LOW);
+  }
+  
+}
+
+// Print the node information in CVS format to serial
+// Address,Uptime,Temp,Vcc,Vbat,Age of data
+void serialNode(dataPacket data) {
+  
+  // get age of previous reading
+  long old_time;
+  switch (data.address) {
+   case 1:
+     old_time = node1_time;
+     //node1_time = millis()/1000;
+     break;
+   case 2:
+     old_time = node2_time;
+     //node2_time = millis()/1000;
+     break;
+   case 3:
+     old_time = node3_time;
+     //node3_time = millis()/1000;
+     break;
+   default:
+     old_time = 0;
+     break;
+  }
+  old_time = millis()/1000 - old_time;
+  
+  Serial.print(data.address);
+  Serial.print(",");
+  Serial.print(data.uptime);
+  Serial.print(",");
+  Serial.print(data.temp);
+  Serial.print(",");
+  Serial.print(data.Vcc);
+  Serial.print(",");
+  Serial.print(data.Vbat);
+  Serial.print(",");
+  Serial.println(old_time);
+}
+
+// Print the information from the LaCrosse weather stations
+// ID,Temp,Relative Humidity,Wind speed,Wind Direction,Rainfall
+void serialLacrosse(laCrosse data) {
+  Serial.print(data.stationID);
+  Serial.print(",");
+  Serial.print(data.temp);
+  Serial.print(",");
+  Serial.print(data.humidity);
+  Serial.print(",");
+  Serial.print(data.windSpeed);
+  Serial.print(",");
+  Serial.print(data.windDir);
+  Serial.print(",");
+  Serial.println(data.rainfall);
+}
+
+void curInfo(long curTime) {
+  Serial.print("Current information ");Serial.println(curTime);
     printInfo(node1);
     printInfo(node2);
     printInfo(node3);
     printf("LaCrosse ID%i: %i.%iC %i%%RH, Wind: %i.%iM/s %s\n", lacrosse.stationID, lacrosse.temp/10,lacrosse.temp%10, lacrosse.humidity, lacrosse.windSpeed/10, lacrosse.windSpeed%10, strWindDirection[lacrosse.windDir]);
     Serial.println();
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read(); 
+    //Serial.println(inChar);
+    // if the incoming character is a |, set a flag
+    // so the main loop can do something about it:
+    if (inChar == '|') {
+      stringComplete = true;
+      break;
+    } else {
+      // add it to the inputString:
+      inputString += inChar;
+    }
   }
 }
 
@@ -352,6 +491,10 @@ void Packet_Converter_WS2355(void)
     }
     #endif
 
+
+    // received lacrosse packet, reset timer
+    lacrosse_age = 0;
+
     #ifdef DEBUG
     //print it in binary text out the serial port
     Serial.print("BINARY=");
@@ -395,8 +538,11 @@ void Packet_Converter_WS2355(void)
       b += (bICP_WSR_PacketData[bICP_WSR_PacketOutputPointer][6] >> 4);
       bWSR_StationTransmitterID = b;
       // Print to serial port
+      #ifdef DEBUG
       Serial.print( "STATIONID=" );
       Serial.println( bWSR_StationTransmitterID, DEC );
+      #endif
+      
       lacrosse.stationID = bWSR_StationTransmitterID;
 
       // Bits 4 and 5 of this byte are the sensor/packet ID
@@ -415,6 +561,7 @@ void Packet_Converter_WS2355(void)
           siWSR_CurrentTemperature = (si - 300);
 
           // Print to serial port with decimal place management
+          #ifdef DEBUG
           Serial.print("TEMPERATURE=");
           Serial.print( (siWSR_CurrentTemperature/10), DEC );
           Serial.print( '.');
@@ -423,6 +570,7 @@ void Packet_Converter_WS2355(void)
           } else {
             Serial.println( (siWSR_CurrentTemperature%10), DEC );
           }
+          #endif
           
           // assign to global variable - will be in form of (-)123 where temp is (-)12.3C
           lacrosse.temp = siWSR_CurrentTemperature;
@@ -437,9 +585,11 @@ void Packet_Converter_WS2355(void)
           c +=  (bICP_WSR_PacketData[bICP_WSR_PacketOutputPointer][8] >> 4);
           bWSR_CurrentHumidity = c;
 
+          #ifdef DEBUG
           // Print to serial port with decimal place management
           Serial.print("HUMIDITY=");
           Serial.println( bWSR_CurrentHumidity, DEC );
+          #endif
           
           // assign to global variable
           lacrosse.humidity = bWSR_CurrentHumidity;
@@ -455,11 +605,14 @@ void Packet_Converter_WS2355(void)
           // Killer (for the Arduino) long multiply here, put in for now to demo real mm of rainfall maths
           ulWSR_Rainfall_mm_x10 = (((unsigned long)uiWSR_RainfallCount * 518) / 100);
 
+
+          #ifdef DEBUG
           // Print to serial port 
           Serial.print("RAINFALL=");
           Serial.print( (ulWSR_Rainfall_mm_x10/10), DEC );
           Serial.print( '.' );
           Serial.println( (ulWSR_Rainfall_mm_x10%10), DEC );
+          #endif
           
           // assign to global variable
           lacrosse.rainfall = ulWSR_Rainfall_mm_x10;
@@ -479,6 +632,8 @@ void Packet_Converter_WS2355(void)
           si +=       (bICP_WSR_PacketData[bICP_WSR_PacketOutputPointer][8] >> 4);
           uiWSR_CurrentWindSpeed_m_per_sec = (uint)si;
 
+
+          #ifdef DEBUG
           // Print to serial port with decimal place management
           Serial.print("WINDDIRECTION=");
           Serial.println( strWindDirection[bWSR_CurrentWindDirection] );
@@ -487,6 +642,7 @@ void Packet_Converter_WS2355(void)
           Serial.print( (uiWSR_CurrentWindSpeed_m_per_sec/10), DEC );
           Serial.print( '.');
           Serial.println( (uiWSR_CurrentWindSpeed_m_per_sec%10), DEC );
+          #endif
           
           // assign wind speed and direction int to global variable
           lacrosse.windSpeed = uiWSR_CurrentWindSpeed_m_per_sec;
@@ -500,7 +656,10 @@ void Packet_Converter_WS2355(void)
         }
       }
     } else {
+      
+      #ifdef DEBUG
       Serial.print( " bad checksum or packet header" );
+      #endif
     }
 
     //----------------------------------------------------------------------------
@@ -777,53 +936,41 @@ void RF_Interpreter_WS2355( /*uiICP_CapturedPeriod, bICP_CapturedPeriodWasHigh*/
 void check_radio(void)       
 {
   
-  
   bool tx,fail,rx;
   radio.whatHappened(tx,fail,rx);                     // What happened?
-  
-  if ( tx ) {                                         // Have we successfully transmitted?
-      
-  }
-  
-  if ( fail ) {                                       // Have we failed to transmit?
+
+  if ( fail ) {                                       // Have we failed?
       printf("Failure\n");
   }
   
   if ( rx || radio.available()){                      // Did we receive a message?
     radio.read(&dataPackage, sizeof(dataPackage));
-    //Serial.println(data);
-    #ifdef DEBUG
+    //Serial.println("");
+    //#ifdef DEBUG
       Serial.print("Node ");
       Serial.print(dataPackage.address);
       Serial.println(" received");
-    #endif
+    //#endif
     unsigned long time = millis() / 1000;
     //Serial.println("Package received");
     // Which node? /////////////
     //node1 = empty;
     //node2 = empty;
     if (dataPackage.address == 1) {
+      node1_age = 0;
       node1 = dataPackage;
       node1_time = time;
     } else if (dataPackage.address == 2) {
+      node2_age = 0;
       node2 = dataPackage;
       node2_time = time;
     } else if (dataPackage.address == 3) {
+      node3_age = 0;
       node3 = dataPackage;
       node3_time = time;
     }
     ////////////////////////////
-    /*
-    Serial.print("Received from: ");
-    if (node1.address) {
-      Serial.print("Node 1 - at (s) ");
-      Serial.println(time);
-      printInfo(node1);
-    } else if (node2.address) {
-      Serial.print("Node 2 - at (s) ");
-      Serial.println(time);
-      printInfo(node2);
-    }*/
+
   }
       
 }
