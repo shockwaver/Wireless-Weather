@@ -9,3 +9,6 @@ Fritzing schematic included for the Arduino wireless nodes
 Wireless_node_transmitter - Code for the wireless nodes
 WirelessWeather_NodeMaster - Code for the wireless base station + laCrosse receiver
 Wireless_node_master - code for the just the wireless node base station
+
+I use printf.h to handle some of the serial printing - you can get that library here:
+https://github.com/maniacbug/RF24/blob/master/examples/pingpair/printf.h
