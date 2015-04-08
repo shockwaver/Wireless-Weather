@@ -25,16 +25,6 @@
  * bit there may mean something else? Still investigating.
  */
 
-/**
- * TODO:
- * 1.   Add: WSR_RESET() call from a dead-time timeout. If no RF
- * activity is received within a few mS, reset the receiver state
- * machine. Currently unsquelched RF noise is resetting it anyway
- * given the receiver model used, but a quiet receiver timeout should be
- * there also. Make sure boundary condition of reset just as new bit /
- * period coming in is not a problem causing loss of packet start if
- * reset happens during first transition/bit in.
- */
  
  /*
   Wireless node master
@@ -45,6 +35,12 @@
   instead of approx 750ms
   
   Address is "0node"
+  
+  4 Status LEDs to indicate node data received in last timeout minutes
+  Node 1 = Pin 10
+  Node 2 = Pin 9
+  Node 3 = Pin 5
+  LaCrosse = Pin 4
   
 */
 
@@ -273,6 +269,13 @@ void loop(void)
     node2_age++;
     node3_age++;
     lacrosse_age++;
+    
+    // reset ages if over 10000 - prevents them from overflowing
+    if (node1_age > 10000) node1_age = 700;
+    if (node2_age > 10000) node2_age = 700;
+    if (node3_age > 10000) node3_age = 700;
+    if (lacrosse_age > 10000) lacrosse_age = 700;
+    
   }
   
   if (node1_age <= node_age_limit) {
@@ -369,7 +372,7 @@ void serialEvent() {
     // get the new byte:
     char inChar = (char)Serial.read(); 
     //Serial.println(inChar);
-    // if the incoming character is a newline, set a flag
+    // if the incoming character is a |, set a flag
     // so the main loop can do something about it:
     if (inChar == '|') {
       stringComplete = true;
