@@ -10,7 +10,7 @@ Wireless_node_transmitter - Code for the wireless nodes
 WirelessWeather_NodeMaster - Code for the wireless base station + laCrosse receiver
 Wireless_node_master - code for the just the wireless node base station
 
-For the RF24 library - I've used this one: https://github.com/maniacbug/RF24
+For the RF24 library - I've used this one: https://github.com/tmrh20/RF24/
 
 I use printf.h to handle some of the serial printing - you can get that library here:
 https://github.com/maniacbug/RF24/blob/master/examples/pingpair/printf.h
