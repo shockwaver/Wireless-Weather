@@ -6,9 +6,10 @@ a 2.4Ghz NRF24L01+ transceiver.
 
 Fritzing schematic included for the Arduino wireless nodes
 
-Wireless_node_transmitter - Code for the wireless nodes
-WirelessWeather_NodeMaster - Code for the wireless base station + laCrosse receiver
-Wireless_node_master - code for the just the wireless node base station
+- Wireless_node_transmitter - Code for the wireless nodes
+- WirelessWeather_NodeMaster - Code for the wireless base station + laCrosse receiver
+- Wireless_node_master - code for the just the wireless node base station
+- python/arduinoWeather.py - Python object for handling serial communication to Master base station
 
 For the RF24 library - I've used this one: https://github.com/tmrh20/RF24/
 
