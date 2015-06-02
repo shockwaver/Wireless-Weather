@@ -25,16 +25,16 @@ class Arduino(object):
 
         # Nodes
         self.node1 = {'address': '', 'uptime': '', 'temp': '', 'vin': '', 'vbat': '', 'age': '', 'error': True}
-        self.node1last = self.node1;
         self.node2 = {'address': '', 'uptime': '', 'temp': '', 'vin': '', 'vbat': '', 'age': '', 'error': True}
         self.node3 = {'address': '', 'uptime': '', 'temp': '', 'vin': '', 'vbat': '', 'age': '', 'error': True}
         self.lacrosse = {'stationid': '', 'temp': '', 'rh': '', 'windspeed': '', 'winddir': 0, 'rainfall': 0,
                          'dewpoint': 0, 'humidex': 0}
 
         # store previous value
-        self.node1last = self.node1
-        self.node2last = self.node2
-        self.node3last = self.node3
+        self.node1last = dict(self.node1)
+        self.node2last = {'address': '', 'uptime': '', 'temp': '', 'vin': '', 'vbat': '', 'age': '', 'error': True}
+        self.node3last = {'address': '', 'uptime': '', 'temp': '', 'vin': '', 'vbat': '', 'age': '', 'error': True}
+        self.nodelast = {'address': '', 'uptime': '', 'temp': '', 'vin': '', 'vbat': '', 'age': '', 'error': True}
 
     def validate(self, node):
         # allow 30% difference between readings
@@ -49,32 +49,47 @@ class Arduino(object):
         tempMax = 50
         ageMax = 700
 
+
         # check for allowed min/max range
         self.logger.debug("Checking min/maxes (temp/vin/vbat/age): "+str(node['temp']) +
                           "/"+str(node['vin'])+"/"+str(node['vbat'])+"/"+str(node['age']))
-        if tempMax < node['temp'] < tempMin:
+        if (node['temp'] < tempMin) or (node['temp'] > tempMax):
+            self.logger.debug("Temp out of range")
             return False
 
-        if (vMax < node['vin'] < vMin) or (vMax < node['vbat'] < vMin):
+        if (node['vin'] < vMin or node['vin'] > vMax or node['vbat'] < vMin or node['vbat'] > vMax):
+            self.logger.debug("vBat or vIn out of range")
             return False
 
         if node['age'] > ageMax:
+            self.logger.debug("Age out of range")
             return False
 
         # check for allowed variances
-        self.logger.debug("validating address")
+        self.logger.debug("validating address: " + str(node['address']))
         address = node['address']
         if (address == 1):
-            nodelast = self.node1last
+            self.logger.debug("Node1last")
+            nodelast = dict(self.node1last)
         elif (address == 2):
-            nodelast = self.node2last
+            self.logger.debug("Node2last")
+            nodelast = dict(self.node2last)
         elif (address == 3):
-            nodelast = self.node3last
+            self.logger.debug("Node3last")
+            nodelast = dict(self.node3last)
         else:
             return False
 
         # on first run, nodelast will be empty - we will assume that it's valid.
+        self.logger.debug("Nodelast: " + str(nodelast['temp']))
         if (nodelast['address'] == ''):
+            self.logger.debug("First run, return true")
+            if (address == 1):
+                self.node1last = dict(node)
+            elif (address == 2):
+                self.node2last = dict(node)
+            elif (address == 3):
+                self.node3last = dict(node)
             return True
 
         oldTemp = nodelast['temp']
@@ -84,26 +99,27 @@ class Arduino(object):
         newVcc = node['vin']
         newVbat = node['vbat']
 
-        self.logger.debug("Checking allowed variance range")
-        if oldTemp*high < newTemp < oldTemp*low:
+        self.logger.debug("Checking allowed variance range of: " + str(oldTemp*high)+"<"+str(newTemp)+"<"+str(oldTemp*low))
+        if (newTemp < oldTemp*low or newTemp > oldTemp*high):
             self.logger.debug("Temp failure: " + str(oldTemp*high)+"<"+str(newTemp)+"<"+str(oldTemp*low))
             return False
 
-        if oldVbat*high < newVbat < oldVbat*low:
+        if (newVbat < oldVbat*low or newVbat > oldVbat*high):
             self.logger.debug("vbat failure: " + str(oldVbat*high)+"<"+str(newVbat)+"<"+str(oldVbat*low))
             return False
 
-        if oldVcc*high < newVcc < oldVcc*low:
+        if (newVcc < oldVcc*low or newVcc > oldVcc*high):
             self.logger.debug("vcc failure: " + str(oldVcc*high)+"<"+str(newVcc)+"<"+str(oldVcc*low))
             return False
 
+        self.logger.debug("Variance ranges passed")
         # all conditions passed - update nodelast and return true
         if (address == 1):
-            self.node1last = nodelast
+            self.node1last = dict(node)
         elif (address == 2):
-            self.node2last = nodelast
+            self.node2last = dict(node)
         elif (address == 3):
-            self.node3last = nodelast
+            self.node3last = dict(node)
 
         self.logger.debug("All tests passed!")
         return True
@@ -173,7 +189,11 @@ class Arduino(object):
                 resultList = result.split(',')
                 self.node1['address'] = int(resultList[0])
                 self.node1['uptime'] = int(resultList[1])
-                self.node1['temp'] = float(resultList[2])
+                if resultList[2] == "ovf":
+                        # temp probe error
+                    self.node1['temp'] = -100
+                else:
+                    self.node1['temp'] = float(resultList[2])
                 self.node1['vin'] = int(resultList[3])
                 self.node1['vbat'] = int(resultList[4])
                 self.node1['age'] = int(resultList[5])
@@ -204,7 +224,11 @@ class Arduino(object):
                 resultList = result.split(',')
                 self.node2['address'] = int(resultList[0])
                 self.node2['uptime'] = int(resultList[1])
-                self.node2['temp'] = float(resultList[2])
+                if resultList[2] == "ovf":
+                    # temp probe error
+                    self.node2['temp'] = -100
+                else:
+                    self.node2['temp'] = float(resultList[2])
                 self.node2['vin'] = int(resultList[3])
                 self.node2['vbat'] = int(resultList[4])/2
                 self.node2['age'] = int(resultList[5])
@@ -235,7 +259,11 @@ class Arduino(object):
                 resultList = result.split(',')
                 self.node3['address'] = int(resultList[0])
                 self.node3['uptime'] = int(resultList[1])
-                self.node3['temp'] = float(resultList[2])
+                if resultList[2] == "ovf":
+                    # temp probe error
+                    self.node3['temp'] = -100
+                else:
+                    self.node3['temp'] = float(resultList[2])
                 self.node3['vin'] = int(resultList[3])
                 self.node3['vbat'] = int(resultList[4])
                 self.node3['age'] = int(resultList[5])
